@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                       String                 @id @default(cuid())
+  name                     String
+  email                    String                 @unique
+  phone                    String?                @unique
+  passwordHash             String
+  role                     String
+  specialty                String?
+  language                 String                 @default("en")
+  notificationsOn          Boolean                @default(true)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  availabilitySlots        DoctorAvailability[]   @relation("DoctorSlots")
+  medications              Medication[]            @relation("PatientMedications")
+  doses                    DoseLog[]               @relation("PatientDoses")
+  patientAppointments      Appointment[]           @relation("PatientAppointments")
+  doctorAppointments       Appointment[]           @relation("DoctorAppointments")
+  linksAsPatient           CaregiverLink[]         @relation("LinkPatient")
+  linksAsCaregiver         CaregiverLink[]         @relation("LinkCaregiver")
+  requestsAsDoctor         AccessRequest[]         @relation("DoctorRequests")
+  requestsAsPatient        AccessRequest[]         @relation("PatientRequests")
+  prescriptionsAsDoctor    Prescription[]          @relation("PrescriptionDoctor")
+  prescriptionsAsPatient   Prescription[]          @relation("PrescriptionPatient")
+  notifications            Notification[]
+}
+
+model Medication {
+  id                String    @id @default(cuid())
+  patientId         String
+  name              String
+  dosage            String
+  frequency         String
+  instructions      String?
+  startDate         DateTime
+  endDate           DateTime?
+  refillNotifiedAt  DateTime?
+  reminderTimes     String
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  patient           User      @relation("PatientMedications", fields: [patientId], references: [id], onDelete: Cascade)
+  doses             DoseLog[]
+
+  @@index([patientId, active])
+}
+
+model DoseLog {
+  id            String     @id @default(cuid())
+  patientId     String
+  medicationId  String
+  scheduledFor  DateTime
+  status        String     @default("SCHEDULED")
+  actedAt       DateTime?
+  snoozedUntil  DateTime?
+  patient       User       @relation("PatientDoses", fields: [patientId], references: [id], onDelete: Cascade)
+  medication    Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@unique([medicationId, scheduledFor])
+  @@index([patientId, scheduledFor])
+}
+
+model Appointment {
+  id             String              @id @default(cuid())
+  patientId      String
+  doctorId       String
+  startsAt       DateTime
+  availabilityId String?             @unique
+  reason         String?
+  status         String              @default("REQUESTED")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  patient        User                @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor         User                @relation("DoctorAppointments", fields: [doctorId], references: [id], onDelete: Cascade)
+  availability   DoctorAvailability? @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, startsAt])
+  @@index([doctorId, startsAt])
+}
+
+model DoctorAvailability {
+  id          String       @id @default(cuid())
+  doctorId    String
+  startsAt    DateTime
+  endsAt      DateTime
+  isBooked    Boolean      @default(false)
+  doctor      User         @relation("DoctorSlots", fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment Appointment?
+
+  @@index([doctorId, startsAt, isBooked])
+}
+
+model CaregiverLink {
+  id                   String   @id @default(cuid())
+  patientId            String
+  caregiverId          String
+  status               String   @default("PENDING")
+  inviteCode           String   @unique
+  canViewDoses          Boolean  @default(true)
+  canViewAppointments   Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  patient               User     @relation("LinkPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  caregiver             User     @relation("LinkCaregiver", fields: [caregiverId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, caregiverId])
+  @@index([caregiverId, status])
+}
+
+model AccessRequest {
+  id         String   @id @default(cuid())
+  doctorId   String
+  patientId  String
+  purpose    String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  decidedAt  DateTime?
+  doctor     User     @relation("DoctorRequests", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient    User     @relation("PatientRequests", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, status])
+}
+
+model Prescription {
+  id          String   @id @default(cuid())
+  doctorId    String
+  patientId   String
+  status      String   @default("SENT")
+  notes       String?
+  createdAt   DateTime @default(now())
+  confirmedAt DateTime?
+  doctor      User     @relation("PrescriptionDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient     User     @relation("PrescriptionPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  items       PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  name           String
+  dosage         String
+  frequency      String
+  durationDays   Int?
+  instructions   String?
+  reminderTimes  String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
